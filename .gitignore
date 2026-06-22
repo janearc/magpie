@@ -1,0 +1,9 @@
+# magpie is code-only. Audio and transcripts live under ${HOME}/var/magpie
+# (outside this repo) and are never committed -- the good-citizen code/data split.
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+.claude/

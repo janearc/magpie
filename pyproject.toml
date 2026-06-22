@@ -1,0 +1,23 @@
+[project]
+name = "magpie"
+version = "0.1.0"
+description = "Audio-to-text ingest service: voice memos in, clean transcripts out. A good-citizen of the mesh."
+requires-python = ">=3.12"
+dependencies = [
+    # transcription: mlx_whisper runs whisper large-v3 on Apple Silicon (Metal).
+    # the model itself lives in the shared read-only HF cache, not vendored here.
+    "mlx-whisper",
+    # the watch-folder daemon + its HTTP surface.
+    "fastapi",
+    "uvicorn",
+    # talking to the local cleanup model (ollama) until the good-citizen
+    # model-client lands (blm#14) and replaces this direct call.
+    "httpx",
+]
+
+[project.scripts]
+magpie = "magpie.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
