@@ -47,14 +47,19 @@ DATA_ROOT = Path.home() / "var" / "magpie"
 BENTOS_ROOT = DATA_ROOT / "bentos"
 
 
-def transcribe(audio_path: Path) -> str:
+def transcribe(audio_path: Path, prompt: str = "") -> str:
     # run whisper large-v3 over the audio and return the raw text. Imported lazily
     # because mlx_whisper pulls in MLX/torch-scale deps we don't want loaded for a
-    # plain `magpie --help`.
+    # plain `magpie --help`. `prompt` is the bento's per-bento context (names,
+    # places, terms, what the recording is about); whisper uses it as
+    # initial_prompt to bias decoding toward the right proper nouns.
     import mlx_whisper
 
     logger.info("transcribing %s with %s", audio_path, WHISPER_MODEL)
-    result = mlx_whisper.transcribe(str(audio_path), path_or_hf_repo=WHISPER_MODEL)
+    kwargs = {"path_or_hf_repo": WHISPER_MODEL}
+    if prompt:
+        kwargs["initial_prompt"] = prompt
+    result = mlx_whisper.transcribe(str(audio_path), **kwargs)
     return result.get("text", "").strip()
 
 
@@ -75,7 +80,7 @@ def cleanup(raw_text: str) -> str:
         return raw_text
 
 
-def process(audio_path: Path) -> dict:
+def process(audio_path: Path, prompt: str = "") -> dict:
     # the full run as a bento: scaffold the dir, copy the source in (dup-over-loss),
     # transcribe -> outputs/transcript.raw.txt, cleanup -> outputs/transcript.txt.
     # Returns a manifest (where the outputs are), NOT the transcript text itself --
@@ -96,7 +101,7 @@ def process(audio_path: Path) -> dict:
     archived = raw_dir / audio_path.name
     shutil.copy2(audio_path, archived)
 
-    raw_text = transcribe(archived)
+    raw_text = transcribe(archived, prompt=prompt)
     (out_dir / "transcript.raw.txt").write_text(raw_text)
 
     cleaned = cleanup(raw_text)
@@ -109,6 +114,7 @@ def process(audio_path: Path) -> dict:
         "source": str(archived),
         "transcript": str(cleaned_path),
         "raw_transcript": str(out_dir / "transcript.raw.txt"),
+        "prompt": prompt,
     }
     (bento / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return manifest

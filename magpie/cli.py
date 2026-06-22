@@ -15,7 +15,7 @@ from . import pipeline
 def _transcribe(args) -> None:
     # run the pipeline and return an ACK manifest: where the result IS, not the
     # transcript inline. "graaaak -- found yer file."
-    manifest = pipeline.process(Path(args.file))
+    manifest = pipeline.process(Path(args.file), prompt=args.prompt)
     print(json.dumps({
         "status": "accepted",
         "message": "graaaak -- found yer file. transcribed, cleaned, archived.",
@@ -35,6 +35,8 @@ def main(argv=None) -> None:
 
     t = sub.add_parser("transcribe", help="transcribe one audio file")
     t.add_argument("file", help="path to an audio file (m4a, wav, ...)")
+    t.add_argument("--prompt", default="",
+                   help="per-bento context (names, places, terms, what it's about) to bias whisper")
     t.set_defaults(func=_transcribe)
 
     s = sub.add_parser("serve", help="run the watch-folder daemon")
