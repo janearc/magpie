@@ -11,6 +11,7 @@ bento; we never move or delete the operator's original.
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import time
