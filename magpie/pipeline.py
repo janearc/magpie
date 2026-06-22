@@ -80,6 +80,17 @@ def cleanup(raw_text: str) -> str:
         return raw_text
 
 
+def _sidecar_prompt(audio_path: Path) -> str:
+    # a per-bento prompt can live in a sidecar file next to the audio:
+    # "<name>.prompt.txt" (or .prompt / .prompt.md). Write it in vim; magpie reads
+    # it as the bento's prompt. An explicit prompt argument overrides it.
+    for suffix in (".prompt.txt", ".prompt", ".prompt.md"):
+        cand = audio_path.parent / (audio_path.stem + suffix)
+        if cand.is_file():
+            return cand.read_text().strip()
+    return ""
+
+
 def process(audio_path: Path, prompt: str = "") -> dict:
     # the full run as a bento: scaffold the dir, copy the source in (dup-over-loss),
     # transcribe -> outputs/transcript.raw.txt, cleanup -> outputs/transcript.txt.
@@ -89,6 +100,10 @@ def process(audio_path: Path, prompt: str = "") -> dict:
     audio_path = Path(audio_path).expanduser().resolve()
     if not audio_path.is_file():
         raise FileNotFoundError(f"no such audio file: {audio_path}")
+
+    # an explicit prompt wins; otherwise pick up a sidecar prompt file if present.
+    if not prompt:
+        prompt = _sidecar_prompt(audio_path)
 
     bento_id = str(uuid.uuid4())
     bento = BENTOS_ROOT / bento_id
