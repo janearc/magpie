@@ -13,12 +13,38 @@ import json
 import logging
 import shutil
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+class _Stage:
+    """Times a pipeline stage into a stats dict, and logs it.
+
+    Records wall and CPU seconds. Wall is the signal that matters for fan/heat:
+    GPU work (whisper on MLX) barely moves CPU time but pegs the device for the
+    whole wall duration, so the longest-wall stage is the one cooking the laptop.
+    These per-stage stats are what magpie reports as a good citizen (and will emit
+    to the bus via the sidecar).
+    """
+
+    def __init__(self, name: str, stats: dict):
+        self.name, self.stats = name, stats
+
+    def __enter__(self):
+        self._w = time.monotonic()
+        self._c = time.process_time()
+        return self
+
+    def __exit__(self, *exc):
+        wall = round(time.monotonic() - self._w, 2)
+        cpu = round(time.process_time() - self._c, 2)
+        self.stats[self.name] = {"wall_s": wall, "cpu_s": cpu}
+        logger.info("stage %s: wall=%.1fs cpu=%.1fs", self.name, wall, cpu)
 
 # whisper large-v3 (MLX) -- mlx_whisper resolves this from the shared, read-only
 # HF cache; we do not vendor weights. ffmpeg (a hard dep of mlx_whisper) decodes
@@ -131,10 +157,13 @@ def process(audio_path: Path, prompt: str = "") -> dict:
     archived = raw_dir / safe
     shutil.copy2(audio_path, archived)
 
-    raw_text = transcribe(archived, prompt=prompt)
+    stats: dict = {}
+    with _Stage("transcribe", stats):
+        raw_text = transcribe(archived, prompt=prompt)
     (out_dir / "transcript.raw.txt").write_text(raw_text)
 
-    cleaned = cleanup(raw_text)
+    with _Stage("cleanup", stats):
+        cleaned = cleanup(raw_text)
     cleaned_path = out_dir / "transcript.txt"
     cleaned_path.write_text(cleaned)
 
@@ -145,6 +174,7 @@ def process(audio_path: Path, prompt: str = "") -> dict:
         "transcript": str(cleaned_path),
         "raw_transcript": str(out_dir / "transcript.raw.txt"),
         "prompt": prompt,
+        "stats": stats,
     }
     (bento / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return manifest
