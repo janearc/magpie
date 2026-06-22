@@ -80,6 +80,15 @@ def cleanup(raw_text: str) -> str:
         return raw_text
 
 
+def safe_name(filename: str) -> str:
+    # magpie normalizes filenames: no spaces or shell-hostile characters. Lowercase,
+    # runs of unsafe chars collapse to a single hyphen; the extension is preserved
+    # lowercased. iOS voice memos arrive with spaces -- we do not propagate that.
+    p = Path(filename)
+    stem = re.sub(r"[^a-z0-9._-]+", "-", p.stem.lower()).strip("-_.") or "untitled"
+    return stem + p.suffix.lower()
+
+
 def _sidecar_prompt(audio_path: Path) -> str:
     # a per-bento prompt can live in a sidecar file next to the audio:
     # "<name>.prompt.txt" (or .prompt / .prompt.md). Write it in vim; magpie reads
@@ -101,9 +110,15 @@ def process(audio_path: Path, prompt: str = "") -> dict:
     if not audio_path.is_file():
         raise FileNotFoundError(f"no such audio file: {audio_path}")
 
-    # an explicit prompt wins; otherwise pick up a sidecar prompt file if present.
+    # magpie normalizes filenames: declare it, and archive under a safe name.
+    safe = safe_name(audio_path.name)
+    if safe != audio_path.name:
+        logger.warning("magpie: normalizing filename %r -> %r (no spaces/unsafe chars)", audio_path.name, safe)
+
+    # an explicit prompt wins; else a sidecar prompt file -- match the safe/slug
+    # name Max actually writes, falling back to the original.
     if not prompt:
-        prompt = _sidecar_prompt(audio_path)
+        prompt = _sidecar_prompt(audio_path.parent / safe) or _sidecar_prompt(audio_path)
 
     bento_id = str(uuid.uuid4())
     bento = BENTOS_ROOT / bento_id
@@ -112,8 +127,8 @@ def process(audio_path: Path, prompt: str = "") -> dict:
     raw_dir.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # COPY (never move) the operator's source into the bento.
-    archived = raw_dir / audio_path.name
+    # COPY (never move) the operator's source into the bento, under the safe name.
+    archived = raw_dir / safe
     shutil.copy2(audio_path, archived)
 
     raw_text = transcribe(archived, prompt=prompt)

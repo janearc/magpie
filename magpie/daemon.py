@@ -39,6 +39,14 @@ def _watch(inbox: Path) -> None:
     while True:
         for f in sorted(inbox.iterdir()):
             if f.is_file() and f.suffix.lower() in _AUDIO_EXTS and f not in seen:
+                # magpie normalizes inbox filenames assertively (no spaces/unsafe
+                # chars) and says so -- iOS hands us spaces; we don't keep them.
+                safe = pipeline.safe_name(f.name)
+                if safe != f.name:
+                    log.warning("magpie: renaming inbox file %r -> %r", f.name, safe)
+                    target = f.parent / safe
+                    f.rename(target)
+                    f = target
                 seen.add(f)
                 try:
                     manifest = pipeline.process(f)
