@@ -18,12 +18,28 @@ dependencies = [
 [project.scripts]
 magpie = "magpie.cli:main"
 
-# dev-only: the regression suite. pytest is not a runtime dependency -- the
-# service ships without it. install with `uv sync --group dev`.
+# dev-only: the regression suite + linter. neither is a runtime dependency -- the
+# service ships without them. install with `uv sync --group dev`.
 [dependency-groups]
 dev = [
     "pytest",
+    "ruff",
 ]
+
+# ruff: the lint gate. line-length matches the fleet (paling) at 100.
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# E/F = pycodestyle + pyflakes (the bug-catching core); B = bugbear (real bug
+# patterns); N = pep8-naming; T201 = no stray print() in a json-by-default service.
+select = ["E", "F", "B", "N", "T201"]
+
+[tool.ruff.lint.per-file-ignores]
+# the CLI's stdout IS the product (json by default); print() is correct there.
+"magpie/cli.py" = ["T201"]
+# the lint tools report their findings to stderr -- printing is the whole point.
+"tools/**/*.py" = ["T201"]
 
 [build-system]
 requires = ["hatchling"]

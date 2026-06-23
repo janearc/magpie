@@ -1,0 +1,22 @@
+# pre-commit: the local bounce, run before a commit lands so a violation is caught
+# at commit time, not in CI. mirrors the CI gate (ruff + the docstring ban). both
+# hooks run through `uv run`, so they use the exact tool versions pinned in uv.lock --
+# no second place to drift. install once per clone: `pre-commit install`.
+#
+# --no-respect-gitignore keeps ruff from walking up into the root ~/work/.git guard.
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint)
+        entry: uv run ruff check --no-respect-gitignore
+        language: system
+        types: [python]
+        require_serial: true
+
+      - id: no-docstrings
+        name: bounce docstrings (standards §4)
+        entry: uv run python tools/lint/no_docstrings.py
+        language: system
+        types: [python]
+        require_serial: true

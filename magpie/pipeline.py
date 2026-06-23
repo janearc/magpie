@@ -161,7 +161,11 @@ def process(audio_path: Path, prompt: str = "") -> dict:
     # magpie normalizes filenames: declare it, and archive under a safe name.
     safe = safe_name(audio_path.name)
     if safe != audio_path.name:
-        logger.warning("magpie: normalizing filename %r -> %r (no spaces/unsafe chars)", audio_path.name, safe)
+        logger.warning(
+            "magpie: normalizing filename %r -> %r (no spaces/unsafe chars)",
+            audio_path.name,
+            safe,
+        )
 
     # an explicit prompt wins; else a sidecar prompt file -- match the safe/slug
     # name Max actually writes, falling back to the original.
