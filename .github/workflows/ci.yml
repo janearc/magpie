@@ -1,0 +1,52 @@
+name: ci
+
+# magpie is an audio-to-text ingest service for Apple Silicon. Its core dependency,
+# mlx-whisper (MLX), is darwin/arm64 only and will not install on an ubuntu runner --
+# so CI runs on macos-latest (Apple Silicon), Python 3.12, installed via uv from
+# uv.lock (the repo's lock of record). Same fleet pattern as paling.
+#
+# The gate runs exactly what a developer runs locally, in order:
+#   - ruff           lint (config in pyproject.toml: select E,F,B,N,T201 @ 100 cols)
+#   - no_docstrings  the house docstring ban (standards §4) -- ruff cannot express it
+#   - pytest         the full suite (heavy MLX/ollama stages are mocked in tests)
+#
+# The tests mock the MLX path, so they do not exercise the GPU on CI; what they gate
+# is the orchestration, the safe_name normalization, and the cleanup-degrade contract.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    # macos-latest is Apple Silicon (arm64). Required: mlx-whisper is darwin/arm64 only.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # --group dev pulls in ruff + pytest; the default group pulls in mlx-whisper etc.
+      - name: Install project (uv sync)
+        run: uv sync --group dev
+
+      - name: Lint (ruff)
+        run: uv run ruff check magpie tests tools
+
+      # the docstring ban. ruff has no rule for it, so a small ast checker enforces it.
+      - name: Bounce docstrings (standards §4)
+        run: uv run python tools/lint/no_docstrings.py magpie tests tools
+
+      - name: Test (pytest)
+        run: uv run pytest ./tests
