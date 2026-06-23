@@ -1,21 +1,20 @@
-"""Regression tests for the magpie pipeline.
-
-These pin the failure modes we have actually hit, so they cannot come back:
-
-  - safe_name() must not raise on a filename that needs normalization. The
-    first daemon run crashed here -- safe_name called re.sub but `re` was never
-    imported, so any file with a space (every iOS voice memo) raised NameError
-    and killed the watch thread while the HTTP server stayed up (green /health,
-    inbox never drained). That bug is a single assertion below.
-
-  - cleanup() must DEGRADE to the raw transcript when the local model is down
-    (ollama unreachable or 404), never fail the run. A raw transcript beats no
-    transcript. Mocked -- we never touch a real ollama.
-
-  - process() must scaffold a bento, COPY (never move) the operator's source in
-    (dup-over-loss), and write the manifest + per-stage stats. The heavy/IO
-    stages (whisper, ollama) are mocked so this runs without MLX or a model.
-"""
+# regression tests for the magpie pipeline.
+#
+# these pin the failure modes we have actually hit, so they cannot come back:
+#
+#   - safe_name() must not raise on a filename that needs normalization. The
+#     first daemon run crashed here -- safe_name called re.sub but `re` was never
+#     imported, so any file with a space (every iOS voice memo) raised NameError
+#     and killed the watch thread while the HTTP server stayed up (green /health,
+#     inbox never drained). That bug is a single assertion below.
+#
+#   - cleanup() must DEGRADE to the raw transcript when the local model is down
+#     (ollama unreachable or 404), never fail the run. A raw transcript beats no
+#     transcript. Mocked -- we never touch a real ollama.
+#
+#   - process() must scaffold a bento, COPY (never move) the operator's source in
+#     (dup-over-loss), and write the manifest + per-stage stats. The heavy/IO
+#     stages (whisper, ollama) are mocked so this runs without MLX or a model.
 
 import json
 from pathlib import Path

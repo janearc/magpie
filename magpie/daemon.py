@@ -1,10 +1,9 @@
-"""magpie daemon: watch an inbox for audio, transcribe it, archive, notify.
-
-Bare-metal because mlx_whisper needs Metal -- same carve-out as paling serve. The
-in-cluster Go sidecar (good-citizen) bridges this host process to the fleet and
-will own the Kafka notification; until that lands (blm#11) this is a minimal
-Python watch loop that logs instead of emitting.
-"""
+# magpie daemon: watch an inbox for audio, transcribe it, archive, notify.
+#
+# bare-metal because mlx_whisper needs Metal -- same carve-out as paling serve. The
+# in-cluster Go sidecar (good-citizen) bridges this host process to the fleet and
+# will own the Kafka notification; until that lands this is a minimal Python watch
+# loop that logs instead of emitting.
 
 import logging
 import threading
@@ -51,8 +50,8 @@ def _watch(inbox: Path) -> None:
                 try:
                     manifest = pipeline.process(f)
                     log.info("transcribed %s -> %s", f.name, manifest["transcript"])
-                    # TODO(blm#11): emit a magpie.events banchan lifecycle event via
-                    # the good-citizen Go sidecar instead of only logging.
+                    # TODO(good-citizen): emit a banchan lifecycle event via the
+                    # good-citizen sidecar instead of only logging.
                 except Exception as e:  # noqa: BLE001 - one bad file must not stop the loop
                     log.error("failed to process %s: %s", f, e)
         time.sleep(5)

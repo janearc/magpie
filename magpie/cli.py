@@ -1,9 +1,8 @@
-"""magpie CLI: `magpie transcribe <file>` and `magpie serve`.
-
-JSON by default -- magpie is a good agent-citizen, so every command's output is
-machine-readable. `transcribe` returns an ACK (it found your file and where the
-result will land), not the transcript text itself.
-"""
+# magpie CLI: `magpie transcribe <file>` and `magpie serve`.
+#
+# JSON by default -- magpie is a good agent-citizen, so every command's output is
+# machine-readable. `transcribe` returns an ACK (it found your file and where the
+# result will land), not the transcript text itself.
 
 import argparse
 import json
