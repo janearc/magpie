@@ -17,6 +17,7 @@
 #     stages (whisper, ollama) are mocked so this runs without MLX or a model.
 
 import json
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -24,7 +25,7 @@ import pytest
 from magpie import pipeline
 
 
-# --- safe_name: the exact regression for the missing `re` import ------------
+# --- safe_name: filenames are a source of many sad nights, so probe them hard --
 
 def test_safe_name_normalizes_spaces():
     # the literal file that crashed the daemon. On the unfixed code (no `import
@@ -38,11 +39,24 @@ def test_safe_name_normalizes_spaces():
 @pytest.mark.parametrize(
     "given, expected",
     [
-        ("Voice Memo 12.m4a", "voice-memo-12.m4a"),   # spaces collapse, lowercased
-        ("a  b   c.WAV", "a-b-c.wav"),                 # runs collapse to one hyphen, ext lowered
-        ("weird!!!name???.mp3", "weird-name.mp3"),     # shell-hostile chars -> hyphen
-        ("--leading.trailing--.flac", "leading.trailing.flac"),  # strip junk from both ends of the stem
-        ("keep_me.ok-1.aac", "keep_me.ok-1.aac"),      # already-safe chars survive
+        # the everyday iOS shapes
+        ("Voice Memo 12.m4a", "voice-memo-12.m4a"),    # spaces collapse, lowercased
+        ("a  b   c.WAV", "a-b-c.wav"),                  # runs collapse to one hyphen, ext lowered
+        ("weird!!!name???.mp3", "weird-name.mp3"),      # shell-hostile chars -> hyphen
+        ("--leading.trailing--.flac", "leading.trailing.flac"),  # strip junk both ends
+        ("keep_me.ok-1.aac", "keep_me.ok-1.aac"),       # already-safe chars survive
+        # control + invisible characters that have no business in a name
+        ("memo\nwith\nnewlines.m4a", "memo-with-newlines.m4a"),  # newlines
+        ("tab\tseparated.m4a", "tab-separated.m4a"),    # control whitespace
+        ("null\x00byte.m4a", "null-byte.m4a"),          # nul byte
+        ("zero​width.m4a", "zero-width.m4a"),      # zero-width space
+        ("rtl‮override.m4a", "rtl-override.m4a"),  # bidi override (a filename-spoof trick)
+        ("emoji \U0001f600 memo.m4a", "emoji-memo.m4a"),  # astral-plane chars drop out
+        # unicode that should fold or hyphenate, not silently vanish or split
+        ("café.m4a", "cafe.m4a"),                  # accented latin (NFC) -> ascii base
+        ("résumé.m4a", "resume.m4a"),       # combining marks (NFD) fold the same
+        ("smart’quote.m4a", "smart-quote.m4a"),    # curly apostrophe -> hyphen
+        ("a—b.m4a", "a-b.m4a"),                     # em dash -> hyphen
     ],
 )
 def test_safe_name_cases(given, expected):
@@ -52,6 +66,37 @@ def test_safe_name_cases(given, expected):
 def test_safe_name_empty_stem_falls_back_to_untitled():
     # a name that normalizes to nothing must not produce an extension-only file.
     assert pipeline.safe_name("???.m4a") == "untitled.m4a"
+
+
+def test_safe_name_non_latin_falls_back_to_untitled():
+    # names with no ascii form fold away to "untitled" -- a naming choice, not data
+    # loss: the bento's uuid dir keeps separate recordings separate regardless.
+    assert pipeline.safe_name("日本語.m4a") == "untitled.m4a"          # 日本語
+    assert pipeline.safe_name("Москва.m4a") == "untitled.m4a"  # Москва
+
+
+def test_safe_name_is_normalization_stable():
+    # the sneaky one: the SAME visible name in NFC vs NFD must slug identically.
+    # before the fix "café" gave "caf" (NFC, é dropped whole) but "cafe" (NFD, base
+    # e survived) -- one name, two slugs, depending on which app encoded it.
+    nfc = unicodedata.normalize("NFC", "café.m4a")
+    nfd = unicodedata.normalize("NFD", "café.m4a")
+    assert pipeline.safe_name(nfc) == pipeline.safe_name(nfd) == "cafe.m4a"
+
+
+def test_safe_name_neutralizes_path_traversal():
+    # a filename is a name, never a path: directory parts and traversal must not
+    # survive, so a crafted memo name cannot escape the inbox or the bento.
+    assert pipeline.safe_name("../../etc/passwd.m4a") == "passwd.m4a"
+    assert pipeline.safe_name("a/b/c.m4a") == "c.m4a"
+
+
+def test_safe_name_caps_length():
+    # some filesystems reject names over 255 bytes; cap the slug so a pathological
+    # name still writes, with the extension preserved.
+    out = pipeline.safe_name("a" * 300 + ".m4a")
+    assert out.endswith(".m4a")
+    assert len(out) - len(".m4a") <= 200
 
 
 # --- cleanup: must degrade to raw when the model is unavailable -------------

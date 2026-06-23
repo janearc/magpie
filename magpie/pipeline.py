@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 
@@ -105,13 +106,35 @@ def cleanup(raw_text: str) -> str:
         return raw_text
 
 
+# cap the slug well under the common 255-byte filesystem name limit. the bento's
+# uuid dir keeps separate runs separate, so the human-facing name does not have to
+# be unique -- only legible and writable everywhere.
+_MAX_STEM = 200
+
+
 def safe_name(filename: str) -> str:
-    # magpie normalizes filenames: no spaces or shell-hostile characters. Lowercase,
-    # runs of unsafe chars collapse to a single hyphen; the extension is preserved
-    # lowercased. iOS voice memos arrive with spaces -- we do not propagate that.
+    # magpie normalizes filenames to ascii, lowercase, no spaces or shell-hostile
+    # characters; runs of unsafe chars collapse to a single hyphen. iOS hands us
+    # spaces -- we do not propagate them. Path(...).stem drops any directory parts,
+    # so traversal ("../../x") and separators cannot survive a name.
     p = Path(filename)
-    stem = re.sub(r"[^a-z0-9._-]+", "-", p.stem.lower()).strip("-_.") or "untitled"
-    return stem + p.suffix.lower()
+    # decompose and drop combining marks so accented latin folds to its base letter
+    # (café -> cafe) the SAME way regardless of NFC vs NFD input form -- otherwise the
+    # one visible name slugs two different ways and two memos collide differently.
+    folded = "".join(
+        c for c in unicodedata.normalize("NFKD", p.stem) if not unicodedata.combining(c)
+    )
+    # anything still outside the safe set -- unicode punctuation, CJK, emoji, control,
+    # bidi/zero-width -- collapses to a hyphen; a name with no ascii form (日本語,
+    # Москва) falls through to "untitled" (a naming choice, not loss: see the uuid dir).
+    stem = re.sub(r"[^a-z0-9._-]+", "-", folded.lower()).strip("-_.") or "untitled"
+    # cap length, then re-strip in case the cut left a trailing separator.
+    stem = stem[:_MAX_STEM].rstrip("-_.") or "untitled"
+    suffix = "".join(
+        c for c in unicodedata.normalize("NFKD", p.suffix) if not unicodedata.combining(c)
+    ).lower()
+    suffix = re.sub(r"[^a-z0-9.]+", "", suffix)
+    return stem + suffix
 
 
 def _sidecar_prompt(audio_path: Path) -> str:
