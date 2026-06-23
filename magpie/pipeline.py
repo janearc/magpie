@@ -1,19 +1,20 @@
-"""The magpie pipeline: a voice-memo m4a in, a clean transcript out.
-
-A run is a bento (the shared unit of work): a directory holding the source audio
-under raw_data/ and the transcripts under outputs/. The steps are banchans --
-transcribe, then cleanup -- and each one's lifecycle is what we eventually emit to
-the bus via the good-citizen Go sidecar (blm#11 wiring is the next step).
-
-Archival rule (Max): duplicates over loss. We COPY the source audio into the
-bento; we never move or delete the operator's original.
-"""
+# the magpie pipeline: a voice-memo m4a in, a clean transcript out.
+#
+# a run is a bento (the shared unit of work): a directory holding the source audio
+# under raw_data/ and the transcripts under outputs/. The steps are banchans --
+# transcribe, then cleanup -- and each one's lifecycle is what we eventually emit to
+# the bus via the good-citizen sidecar (the next wiring step).
+#
+# archival rule (Max): duplicates over loss. We COPY the source audio into the
+# bento; we never move or delete the operator's original.
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 
@@ -23,14 +24,13 @@ logger = logging.getLogger(__name__)
 
 
 class _Stage:
-    """Times a pipeline stage into a stats dict, and logs it.
-
-    Records wall and CPU seconds. Wall is the signal that matters for fan/heat:
-    GPU work (whisper on MLX) barely moves CPU time but pegs the device for the
-    whole wall duration, so the longest-wall stage is the one cooking the laptop.
-    These per-stage stats are what magpie reports as a good citizen (and will emit
-    to the bus via the sidecar).
-    """
+    # times a pipeline stage into a stats dict, and logs it.
+    #
+    # records wall and CPU seconds. Wall is the signal that matters for fan/heat:
+    # GPU work (whisper on MLX) barely moves CPU time but pegs the device for the
+    # whole wall duration, so the longest-wall stage is the one cooking the laptop.
+    # these per-stage stats are what magpie reports as a good citizen (and will emit
+    # to the bus via the sidecar).
 
     def __init__(self, name: str, stats: dict):
         self.name, self.stats = name, stats
@@ -49,11 +49,11 @@ class _Stage:
 # whisper large-v3 (MLX) -- mlx_whisper resolves this from the shared, read-only
 # HF cache; we do not vendor weights. ffmpeg (a hard dep of mlx_whisper) decodes
 # the m4a. The model id is a logical name; the good-citizen model abstraction
-# (blm#14) will own this resolution later, the same way it does for mistral/flan.
+# will own this resolution later, the same way it does for mistral/flan.
 WHISPER_MODEL = "mlx-community/whisper-large-v3-mlx"
 
 # the cleanup model. mistral via the local ollama, kept in-enclave. This direct
-# call is INTERIM -- it is exactly the seam the good-citizen model-client (blm#14)
+# call is INTERIM -- it is exactly the seam the good-citizen model-client
 # replaces, so cleanup routes through one model abstraction instead of a hand-rolled
 # ollama POST. The prompt's whole job is to delete whisper's loop artifacts (the
 # "okay" x337 / "Let's go." x40 pathology) WITHOUT rewriting the words.
@@ -106,13 +106,35 @@ def cleanup(raw_text: str) -> str:
         return raw_text
 
 
+# cap the slug well under the common 255-byte filesystem name limit. the bento's
+# uuid dir keeps separate runs separate, so the human-facing name does not have to
+# be unique -- only legible and writable everywhere.
+_MAX_STEM = 200
+
+
 def safe_name(filename: str) -> str:
-    # magpie normalizes filenames: no spaces or shell-hostile characters. Lowercase,
-    # runs of unsafe chars collapse to a single hyphen; the extension is preserved
-    # lowercased. iOS voice memos arrive with spaces -- we do not propagate that.
+    # magpie normalizes filenames to ascii, lowercase, no spaces or shell-hostile
+    # characters; runs of unsafe chars collapse to a single hyphen. iOS hands us
+    # spaces -- we do not propagate them. Path(...).stem drops any directory parts,
+    # so traversal ("../../x") and separators cannot survive a name.
     p = Path(filename)
-    stem = re.sub(r"[^a-z0-9._-]+", "-", p.stem.lower()).strip("-_.") or "untitled"
-    return stem + p.suffix.lower()
+    # decompose and drop combining marks so accented latin folds to its base letter
+    # (café -> cafe) the SAME way regardless of NFC vs NFD input form -- otherwise the
+    # one visible name slugs two different ways and two memos collide differently.
+    folded = "".join(
+        c for c in unicodedata.normalize("NFKD", p.stem) if not unicodedata.combining(c)
+    )
+    # anything still outside the safe set -- unicode punctuation, CJK, emoji, control,
+    # bidi/zero-width -- collapses to a hyphen; a name with no ascii form (日本語,
+    # Москва) falls through to "untitled" (a naming choice, not loss: see the uuid dir).
+    stem = re.sub(r"[^a-z0-9._-]+", "-", folded.lower()).strip("-_.") or "untitled"
+    # cap length, then re-strip in case the cut left a trailing separator.
+    stem = stem[:_MAX_STEM].rstrip("-_.") or "untitled"
+    suffix = "".join(
+        c for c in unicodedata.normalize("NFKD", p.suffix) if not unicodedata.combining(c)
+    ).lower()
+    suffix = re.sub(r"[^a-z0-9.]+", "", suffix)
+    return stem + suffix
 
 
 def _sidecar_prompt(audio_path: Path) -> str:
