@@ -18,6 +18,13 @@ dependencies = [
 [project.scripts]
 magpie = "magpie.cli:main"
 
+# dev-only: the regression suite. pytest is not a runtime dependency -- the
+# service ships without it. install with `uv sync --group dev`.
+[dependency-groups]
+dev = [
+    "pytest",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
