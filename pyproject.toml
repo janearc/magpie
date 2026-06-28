@@ -23,7 +23,7 @@ dependencies = [
 # This port is stacked on the blm birblib PR (janearc/blm#44): pinned to that branch's
 # commit (deterministic on this connectivity-hostile network) until birblib lands on blm's
 # main, at which point this re-pins to the merged SHA / tracks main again.
-blm-good-citizen = { git = "https://github.com/janearc/blm.git", subdirectory = "python", rev = "df070cfe62b8557a0e7bd848b07b5f22a10ba3d4" }
+blm-good-citizen = { git = "https://github.com/janearc/blm.git", subdirectory = "python", rev = "7504182b59a323fd1dadc7029f12835714611cbc" }
 
 [project.scripts]
 magpie = "magpie.cli:main"
