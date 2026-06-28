@@ -150,11 +150,12 @@ class AudioHandlers(BirbHandlers):
         bento = AudioBento(b)
         with Stage("transcribe", self.stats):
             raw_text = transcribe(Path(bento.audio.location), prompt=b.prompt)
-        bento.raw_transcript_path.write_text(raw_text)
+        # output emission routes through the provider (atomic; sink is swappable).
+        self.io.write(str(bento.raw_transcript_path), raw_text)
 
         with Stage("cleanup", self.stats):
             cleaned, degraded = _clean_or_degrade(raw_text)
-        bento.transcript_path.write_text(cleaned)
+        self.io.write(str(bento.transcript_path), cleaned)
         return CookResult(
             artifact=str(bento.transcript_path),
             ok=not degraded,
