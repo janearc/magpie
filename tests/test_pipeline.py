@@ -244,3 +244,29 @@ def test_process_raises_when_transcribe_fails(mocked_stages, monkeypatch):
     monkeypatch.setattr(pipeline, "transcribe", boom)
     with pytest.raises(RuntimeError, match="whisper exploded"):
         pipeline.process(_make_audio(mocked_stages))
+
+
+# --- AudioBento: paths and banchans compose in ONE place --------------------
+
+def test_audio_bento_composes_paths_under_root(mocked_stages):
+    # every path derives from root_path; the layout is the class's business, not the
+    # handlers'. This is the surface that used to be inline `root / "raw_data"`.
+    bento = pipeline.AudioBento.new(_make_audio(mocked_stages), prompt="")
+    root = bento.root
+    assert bento.raw_dir == root / "raw_data"
+    assert bento.out_dir == root / "outputs"
+    assert bento.raw_transcript_path == root / "outputs" / "transcript.raw.txt"
+    assert bento.transcript_path == root / "outputs" / "transcript.txt"
+    assert bento.manifest_path == root / "manifest.json"
+
+
+def test_audio_bento_banchans_by_name_not_bare_string(mocked_stages):
+    # the kind's elements are reached through methods; the transcript banchan does not
+    # exist until it is produced, then add_transcript declares it.
+    bento = pipeline.AudioBento.new(_make_audio(mocked_stages), prompt="")
+    assert bento.pb.kind == pipeline.KIND_RAW_AUDIO
+    assert bento.audio is not None
+    assert bento.transcript is None
+    bento.add_transcript(bento.transcript_path)
+    assert bento.transcript is not None
+    assert bento.transcript.location == str(bento.transcript_path)
