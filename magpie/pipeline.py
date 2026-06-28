@@ -18,7 +18,7 @@ import unicodedata
 import uuid
 from pathlib import Path
 
-import httpx
+from good_citizen import model
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +52,12 @@ class _Stage:
 # will own this resolution later, the same way it does for mistral/flan.
 WHISPER_MODEL = "mlx-community/whisper-large-v3-mlx"
 
-# the cleanup model. mistral via the local ollama, kept in-enclave. This direct
-# call is INTERIM -- it is exactly the seam the good-citizen model-client
-# replaces, so cleanup routes through one model abstraction instead of a hand-rolled
-# ollama POST. The prompt's whole job is to delete whisper's loop artifacts (the
-# "okay" x337 / "Let's go." x40 pathology) WITHOUT rewriting the words.
+# the cleanup model -- a logical name the good-citizen model client resolves through
+# delightd discovery (fail-closed), replacing the interim hand-rolled ollama POST so
+# cleanup routes through one model abstraction. The prompt's whole job is to delete
+# whisper's loop artifacts (the "okay" x337 / "Let's go." x40 pathology) WITHOUT
+# rewriting the words.
 CLEANUP_MODEL = "mistral"
-OLLAMA_URL = "http://localhost:11434"
 _CLEANUP_PROMPT = (
     "The following is a raw speech-to-text transcript. It may contain stutter-loop "
     "artifacts where a phrase repeats many times in a row -- that is a transcription "
@@ -90,18 +89,15 @@ def transcribe(audio_path: Path, prompt: str = "") -> str:
 
 
 def cleanup(raw_text: str) -> str:
-    # best-effort artifact cleanup via local mistral. If ollama is unreachable we
-    # return the raw transcript rather than fail the run -- a raw transcript beats
-    # no transcript (telemetry-never-blocks applied to a processing step).
+    # best-effort artifact cleanup through the good-citizen model client, which
+    # resolves CLEANUP_MODEL via delightd discovery (fail-closed) and invokes it. If
+    # nothing healthy serves the model -- ModelUnavailable -- or the call fails, we
+    # return the raw transcript rather than fail the run: a raw transcript beats no
+    # transcript (telemetry-never-blocks applied to a processing step).
     try:
-        resp = httpx.post(
-            OLLAMA_URL + "/api/generate",
-            json={"model": CLEANUP_MODEL, "prompt": _CLEANUP_PROMPT + raw_text, "stream": False},
-            timeout=300,
-        )
-        resp.raise_for_status()
-        return resp.json().get("response", "").strip() or raw_text
-    except Exception as e:  # noqa: BLE001 - any failure degrades to the raw text
+        cleaned = model.generate(CLEANUP_MODEL, _CLEANUP_PROMPT + raw_text, timeout=300)
+        return cleaned.strip() or raw_text
+    except Exception as e:  # noqa: BLE001 - any failure (incl. ModelUnavailable) degrades to raw
         logger.warning("cleanup model unavailable (%s); keeping raw transcript", e)
         return raw_text
 

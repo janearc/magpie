@@ -101,54 +101,37 @@ def test_safe_name_caps_length():
 
 # --- cleanup: must degrade to raw when the model is unavailable -------------
 
-def test_cleanup_degrades_when_ollama_unreachable(monkeypatch):
-    # connection error (ollama not running at all) -> keep the raw transcript.
+def test_cleanup_degrades_when_model_unavailable(monkeypatch):
+    # ModelUnavailable (delightd down, or nothing healthy serves the model) -> keep
+    # the raw transcript. This is the fail-closed path of the good-citizen client.
     def boom(*a, **k):
-        raise pipeline.httpx.ConnectError("connection refused")
+        raise pipeline.model.ModelUnavailable("no backend serves 'mistral'")
 
-    monkeypatch.setattr(pipeline.httpx, "post", boom)
+    monkeypatch.setattr(pipeline.model, "generate", boom)
     raw = "the raw transcript, kept verbatim"
     assert pipeline.cleanup(raw) == raw
 
 
-def test_cleanup_degrades_on_http_error(monkeypatch):
-    # the 404 we actually saw (/api/generate missing / model not pulled).
-    # raise_for_status() raises -> we fall through to the raw transcript.
-    class Resp:
-        def raise_for_status(self):
-            raise pipeline.httpx.HTTPStatusError("404", request=None, response=None)
+def test_cleanup_degrades_on_model_error(monkeypatch):
+    # any other failure mid-generate (a transport error, say) also falls through to
+    # the raw transcript rather than failing the run.
+    def boom(*a, **k):
+        raise RuntimeError("connection reset mid-generate")
 
-        def json(self):  # pragma: no cover - never reached when status raises
-            return {}
-
-    monkeypatch.setattr(pipeline.httpx, "post", lambda *a, **k: Resp())
-    raw = "still here even though the model 404'd"
+    monkeypatch.setattr(pipeline.model, "generate", boom)
+    raw = "still here even though generate blew up"
     assert pipeline.cleanup(raw) == raw
 
 
 def test_cleanup_returns_model_output_on_success(monkeypatch):
     # the happy path: the model answers, we return its cleaned text.
-    class Resp:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"response": "cleaned text"}
-
-    monkeypatch.setattr(pipeline.httpx, "post", lambda *a, **k: Resp())
+    monkeypatch.setattr(pipeline.model, "generate", lambda *a, **k: "cleaned text")
     assert pipeline.cleanup("dirty text") == "cleaned text"
 
 
 def test_cleanup_empty_model_output_falls_back_to_raw(monkeypatch):
     # an empty response is not an improvement -- keep the raw transcript.
-    class Resp:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"response": "   "}
-
-    monkeypatch.setattr(pipeline.httpx, "post", lambda *a, **k: Resp())
+    monkeypatch.setattr(pipeline.model, "generate", lambda *a, **k: "   ")
     raw = "raw beats blank"
     assert pipeline.cleanup(raw) == raw
 
