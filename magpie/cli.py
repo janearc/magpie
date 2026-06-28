@@ -13,13 +13,15 @@ from . import pipeline
 
 def _transcribe(args) -> None:
     # run the pipeline and return an ACK manifest: where the result IS, not the
-    # transcript inline. "graaaak -- found yer file."
+    # transcript inline. "graaaak -- found yer file." the transcript is the bento's
+    # primary artifact in the birblib manifest envelope.
     manifest = pipeline.process(Path(args.file), prompt=args.prompt)
     print(json.dumps({
         "status": "accepted",
         "message": "graaaak -- found yer file. transcribed, cleaned, archived.",
         "bento_id": manifest["bento_id"],
-        "transcript": manifest["transcript"],
+        "ok": manifest["ok"],
+        "transcript": manifest["artifact"],
     }, indent=2))
 
 

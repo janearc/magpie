@@ -11,14 +11,17 @@ dependencies = [
     "fastapi",
     "uvicorn",
     # the good-citizen Python surface: the model client (cleanup resolves its model
-    # through delightd discovery, fail-closed) plus the bento contracts + FSM harness.
-    # Replaces the interim direct-ollama call (was blm#14).
-    "blm-good-citizen",
+    # through delightd discovery, fail-closed), the bento contracts + FSM harness, AND
+    # birblib -- the birb archetype layer magpie now subclasses (BirbBento/BirbHandlers).
+    # birblib ships in this same distribution, so it is one dependency, not two; the
+    # >=0.5.0 floor is the release that first carries it.
+    "blm-good-citizen>=0.5.0",
 ]
 
 [tool.uv.sources]
-# blm is public; install the good-citizen surface from its python/ subdirectory.
-# Pin a rev here (or bump deliberately) when the surface changes.
+# blm is public; install the good-citizen + birblib surface from its python/ subdirectory.
+# This port is stacked on the blm birblib PR: it needs blm's main to carry birblib (the
+# 0.5.0 distribution). Pin a rev here (or bump deliberately) when the surface changes.
 blm-good-citizen = { git = "https://github.com/janearc/blm.git", subdirectory = "python" }
 
 [project.scripts]
