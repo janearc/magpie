@@ -10,10 +10,16 @@ dependencies = [
     # the watch-folder daemon + its HTTP surface.
     "fastapi",
     "uvicorn",
-    # talking to the local cleanup model (ollama) until the good-citizen
-    # model-client lands (blm#14) and replaces this direct call.
-    "httpx",
+    # the good-citizen Python surface: the model client (cleanup resolves its model
+    # through delightd discovery, fail-closed) plus the bento contracts + FSM harness.
+    # Replaces the interim direct-ollama call (was blm#14).
+    "blm-good-citizen",
 ]
+
+[tool.uv.sources]
+# blm is public; install the good-citizen surface from its python/ subdirectory.
+# Pin a rev here (or bump deliberately) when the surface changes.
+blm-good-citizen = { git = "https://github.com/janearc/blm.git", subdirectory = "python" }
 
 [project.scripts]
 magpie = "magpie.cli:main"
