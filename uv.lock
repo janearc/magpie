@@ -35,8 +35,8 @@ wheels = [
 
 [[package]]
 name = "blm-good-citizen"
-version = "0.4.0"
-source = { git = "https://github.com/janearc/blm.git?subdirectory=python#c1bfea5de61a82a9f85d9a097ed46ea6513f1131" }
+version = "0.4.1"
+source = { git = "https://github.com/janearc/blm.git?subdirectory=python&rev=df070cfe62b8557a0e7bd848b07b5f22a10ba3d4#df070cfe62b8557a0e7bd848b07b5f22a10ba3d4" }
 dependencies = [
     { name = "protobuf" },
     { name = "transitions" },
@@ -408,7 +408,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "blm-good-citizen", git = "https://github.com/janearc/blm.git?subdirectory=python" },
+    { name = "blm-good-citizen", git = "https://github.com/janearc/blm.git?subdirectory=python&rev=df070cfe62b8557a0e7bd848b07b5f22a10ba3d4" },
     { name = "fastapi" },
     { name = "mlx-whisper" },
     { name = "uvicorn" },

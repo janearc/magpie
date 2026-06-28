@@ -15,7 +15,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from birblib import BirbBento, BirbHandlers, CookResult, Stage, driver, safe_name
+from birblib import BirbBento, BirbHandlers, CookResult, Manifest, Stage, driver, safe_name
 from good_citizen import model
 
 logger = logging.getLogger(__name__)
@@ -165,13 +165,12 @@ class AudioHandlers(BirbHandlers):
             },
         )
 
-    def params(self, bento) -> dict:
-        # the resolved request that lands under the manifest's params: magpie's is the
-        # per-bento prompt that biased whisper.
-        return {"prompt": bento.pb.prompt}
+    # magpie's resolved request is just the per-bento prompt that biased whisper -- which
+    # is exactly birblib's default request(), so on_noticed archives it to request.json and
+    # params() surfaces it under the manifest with no override here.
 
 
-def process(audio_path: Path, prompt: str = "", emitter=None) -> dict:
+def process(audio_path: Path, prompt: str = "", emitter=None) -> Manifest:
     # the full run as a bento walked through the generated FSM (via birblib.driver). Builds
     # a NOTICED bento and drives it to a terminal state; each transition is relayed to
     # `emitter` (the good-citizen sidecar) when one is given -- the CLI passes None (local,

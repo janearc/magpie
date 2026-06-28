@@ -95,7 +95,7 @@ def test_process_copies_source_and_does_not_move_it(mocked_stages):
     src = _make_audio(mocked_stages)
     manifest = pipeline.process(src)
     assert src.exists(), "process() must COPY the source, never move/delete it"
-    archived = Path(manifest["detail"]["source"])
+    archived = Path(manifest.detail["source"])
     assert archived.exists()
     assert archived.read_bytes() == src.read_bytes()
     assert "raw_data" in str(archived)
@@ -105,7 +105,7 @@ def test_process_normalizes_archived_filename(mocked_stages):
     # the archived copy lands under the safe name even though the source had a space.
     src = _make_audio(mocked_stages, "a memo.m4a")
     manifest = pipeline.process(src)
-    assert Path(manifest["detail"]["source"]).name == "a-memo.m4a"
+    assert Path(manifest.detail["source"]).name == "a-memo.m4a"
 
 
 def test_process_writes_the_manifest_envelope(mocked_stages):
@@ -113,18 +113,18 @@ def test_process_writes_the_manifest_envelope(mocked_stages):
     manifest = pipeline.process(src)
 
     # the birblib envelope: ok is the single success signal, the transcript is the artifact.
-    assert manifest["ok"] is True
-    assert manifest["state"] == "DONE"
-    assert manifest["kind"] == pipeline.KIND_RAW_AUDIO
-    raw = Path(manifest["detail"]["raw_transcript"])
-    clean = Path(manifest["artifact"])
+    assert manifest.ok is True
+    assert manifest.state == "DONE"
+    assert manifest.kind == pipeline.KIND_RAW_AUDIO
+    raw = Path(manifest.detail["raw_transcript"])
+    clean = Path(manifest.artifact)
     assert raw.read_text() == "raw words"
     assert clean.read_text() == "clean words"
 
     # the manifest is persisted next to the outputs and carries per-stage stats.
     bento = clean.parent.parent
     on_disk = json.loads((bento / "manifest.json").read_text())
-    assert on_disk["bento_id"] == manifest["bento_id"]
+    assert on_disk["bento_id"] == manifest.bento_id
     assert set(on_disk["stats"]) == {"transcribe", "cleanup"}
     assert "wall_s" in on_disk["stats"]["transcribe"]
 
@@ -133,9 +133,9 @@ def test_process_persists_the_bento_on_disk(mocked_stages):
     # the on-disk SOT birblib adds: the bento itself, recoverable without the bus.
     src = _make_audio(mocked_stages)
     manifest = pipeline.process(src)
-    bento_dir = Path(manifest["artifact"]).parent.parent
+    bento_dir = Path(manifest.artifact).parent.parent
     on_disk = json.loads((bento_dir / "bento.json").read_text())
-    assert on_disk["id"] == manifest["bento_id"]
+    assert on_disk["id"] == manifest.bento_id
     assert on_disk["kind"] == pipeline.KIND_RAW_AUDIO
 
 
@@ -152,7 +152,8 @@ def test_process_uses_sidecar_prompt(mocked_stages, monkeypatch):
     )
     manifest = pipeline.process(src)
     assert seen["prompt"] == "names: Will, Rae"
-    assert manifest["params"]["prompt"] == "names: Will, Rae"
+    # the prompt is archived to request.json by the base and surfaced under params.
+    assert manifest.params["prompt"] == "names: Will, Rae"
 
 
 def test_process_raises_on_missing_file(mocked_stages):
@@ -181,9 +182,9 @@ def test_process_partial_then_done_when_cleanup_degrades(mocked_stages, monkeypa
         bento_pb2.BENTO_STATE_PARTIAL,
         bento_pb2.BENTO_STATE_DONE,
     ]
-    assert manifest["ok"] is True  # raw beats nothing: the run is usable
-    assert manifest["detail"]["degraded"] is True
-    assert Path(manifest["artifact"]).read_text() == "raw words"
+    assert manifest.ok is True  # raw beats nothing: the run is usable
+    assert manifest.detail["degraded"] is True
+    assert Path(manifest.artifact).read_text() == "raw words"
 
 
 def test_process_raises_when_transcribe_fails(mocked_stages, monkeypatch):

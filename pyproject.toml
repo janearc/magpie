@@ -13,16 +13,17 @@ dependencies = [
     # the good-citizen Python surface: the model client (cleanup resolves its model
     # through delightd discovery, fail-closed), the bento contracts + FSM harness, AND
     # birblib -- the birb archetype layer magpie now subclasses (BirbBento/BirbHandlers).
-    # birblib ships in this same distribution, so it is one dependency, not two; the
-    # >=0.5.0 floor is the release that first carries it.
-    "blm-good-citizen>=0.5.0",
+    # birblib ships in this same distribution (the 0.4.x convergence line), so it is one
+    # dependency, not two.
+    "blm-good-citizen",
 ]
 
 [tool.uv.sources]
 # blm is public; install the good-citizen + birblib surface from its python/ subdirectory.
-# This port is stacked on the blm birblib PR: it needs blm's main to carry birblib (the
-# 0.5.0 distribution). Pin a rev here (or bump deliberately) when the surface changes.
-blm-good-citizen = { git = "https://github.com/janearc/blm.git", subdirectory = "python" }
+# This port is stacked on the blm birblib PR (janearc/blm#44): pinned to that branch's
+# commit (deterministic on this connectivity-hostile network) until birblib lands on blm's
+# main, at which point this re-pins to the merged SHA / tracks main again.
+blm-good-citizen = { git = "https://github.com/janearc/blm.git", subdirectory = "python", rev = "df070cfe62b8557a0e7bd848b07b5f22a10ba3d4" }
 
 [project.scripts]
 magpie = "magpie.cli:main"

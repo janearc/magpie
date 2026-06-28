@@ -19,9 +19,9 @@ def _transcribe(args) -> None:
     print(json.dumps({
         "status": "accepted",
         "message": "graaaak -- found yer file. transcribed, cleaned, archived.",
-        "bento_id": manifest["bento_id"],
-        "ok": manifest["ok"],
-        "transcript": manifest["artifact"],
+        "bento_id": manifest.bento_id,
+        "ok": manifest.ok,
+        "transcript": manifest.artifact,
     }, indent=2))
 
 
