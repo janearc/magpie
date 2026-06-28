@@ -21,6 +21,7 @@ import unicodedata
 from pathlib import Path
 
 import pytest
+from bento.v1 import bento_pb2
 
 from magpie import pipeline
 
@@ -143,7 +144,7 @@ def mocked_stages(monkeypatch, tmp_path):
     # mock the heavy/IO stages so the orchestration is testable without MLX or a
     # model, and redirect the data root to a tmp dir so we never touch ~/var.
     monkeypatch.setattr(pipeline, "transcribe", lambda audio, prompt="": "raw words")
-    monkeypatch.setattr(pipeline, "cleanup", lambda raw: "clean words")
+    monkeypatch.setattr(pipeline, "_clean_or_degrade", lambda raw: ("clean words", False))
     monkeypatch.setattr(pipeline, "BENTOS_ROOT", tmp_path / "bentos")
     return tmp_path
 
@@ -207,3 +208,39 @@ def test_process_uses_sidecar_prompt(mocked_stages, monkeypatch):
 def test_process_raises_on_missing_file(mocked_stages):
     with pytest.raises(FileNotFoundError):
         pipeline.process(mocked_stages / "does-not-exist.m4a")
+
+
+# --- the FSM: state transitions + the lifecycle-emit seam -------------------
+
+def test_process_emits_cook_then_done_on_clean(mocked_stages):
+    # a clean run walks COOK -> DONE; each transition is relayed to the emitter (the
+    # seam the sidecar plugs into). NOTICED is the seed state, not a transition.
+    seen = []
+    pipeline.process(_make_audio(mocked_stages), emitter=lambda b, s: seen.append(s))
+    assert seen == [bento_pb2.BENTO_STATE_COOK, bento_pb2.BENTO_STATE_DONE]
+
+
+def test_process_partial_then_done_when_cleanup_degrades(mocked_stages, monkeypatch):
+    # a degraded cleanup (model down) is PARTIAL, then accepted as DONE -- the raw
+    # transcript is the deliverable and the manifest records the degrade.
+    monkeypatch.setattr(pipeline, "_clean_or_degrade", lambda raw: (raw, True))
+    seen = []
+    manifest = pipeline.process(_make_audio(mocked_stages), emitter=lambda b, s: seen.append(s))
+    assert seen == [
+        bento_pb2.BENTO_STATE_COOK,
+        bento_pb2.BENTO_STATE_PARTIAL,
+        bento_pb2.BENTO_STATE_DONE,
+    ]
+    assert manifest["degraded"] is True
+    assert Path(manifest["transcript"]).read_text() == "raw words"
+
+
+def test_process_raises_when_transcribe_fails(mocked_stages, monkeypatch):
+    # transcription is the one step that cannot degrade: a failure FAILs the bento and
+    # process() raises, so the cli/daemon surface it rather than reporting success.
+    def boom(audio, prompt=""):
+        raise RuntimeError("whisper exploded")
+
+    monkeypatch.setattr(pipeline, "transcribe", boom)
+    with pytest.raises(RuntimeError, match="whisper exploded"):
+        pipeline.process(_make_audio(mocked_stages))

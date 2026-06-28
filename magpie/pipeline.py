@@ -18,7 +18,8 @@ import unicodedata
 import uuid
 from pathlib import Path
 
-from good_citizen import model
+from bento.v1 import bento_pb2
+from good_citizen import fsm, model
 
 logger = logging.getLogger(__name__)
 
@@ -88,18 +89,24 @@ def transcribe(audio_path: Path, prompt: str = "") -> str:
     return result.get("text", "").strip()
 
 
-def cleanup(raw_text: str) -> str:
-    # best-effort artifact cleanup through the good-citizen model client, which
-    # resolves CLEANUP_MODEL via delightd discovery (fail-closed) and invokes it. If
-    # nothing healthy serves the model -- ModelUnavailable -- or the call fails, we
-    # return the raw transcript rather than fail the run: a raw transcript beats no
-    # transcript (telemetry-never-blocks applied to a processing step).
+def _clean_or_degrade(raw_text: str) -> tuple[str, bool]:
+    # run cleanup, returning (text, degraded). degraded is True when the model was
+    # unavailable (or the call failed) and we kept the raw transcript -- the bento's
+    # PARTIAL outcome. on_cook uses the flag to pick DONE vs PARTIAL; cleanup() below is
+    # the text-only view for callers that do not care which path produced it.
     try:
         cleaned = model.generate(CLEANUP_MODEL, _CLEANUP_PROMPT + raw_text, timeout=300)
-        return cleaned.strip() or raw_text
+        return (cleaned.strip() or raw_text), False
     except Exception as e:  # noqa: BLE001 - any failure (incl. ModelUnavailable) degrades to raw
         logger.warning("cleanup model unavailable (%s); keeping raw transcript", e)
-        return raw_text
+        return raw_text, True
+
+
+def cleanup(raw_text: str) -> str:
+    # best-effort artifact cleanup through the good-citizen model client (delightd
+    # discovery, fail-closed). Degrades to the raw transcript rather than failing the
+    # run -- a raw transcript beats no transcript.
+    return _clean_or_degrade(raw_text)[0]
 
 
 # cap the slug well under the common 255-byte filesystem name limit. the bento's
@@ -144,62 +151,162 @@ def _sidecar_prompt(audio_path: Path) -> str:
     return ""
 
 
-def process(audio_path: Path, prompt: str = "") -> dict:
-    # the full run as a bento: scaffold the dir, copy the source in (dup-over-loss),
-    # transcribe -> outputs/transcript.raw.txt, cleanup -> outputs/transcript.txt.
-    # Returns a manifest (where the outputs are), NOT the transcript text itself --
-    # magpie tells you it found your file and where the result will be, it does not
-    # hand back the prose.
+# the lifecycle states a magpie bento settles into; past these the FSM halts.
+_TERMINAL = {bento_pb2.BENTO_STATE_DONE, bento_pb2.BENTO_STATE_FAILED}
+
+
+def _banchan(b: bento_pb2.Bento, name: str) -> bento_pb2.Banchan | None:
+    # the named element of a bento, or None.
+    for ban in b.banchans:
+        if ban.name == name:
+            return ban
+    return None
+
+
+def _build_bento(audio_path: Path, prompt: str) -> bento_pb2.Bento:
+    # a voice-memo bento in NOTICED. Its audio banchan's location starts at the
+    # operator's original file; on_noticed copies it into the bento and repoints the
+    # location at the archived copy. The transcript banchan is added in COOK.
+    bento_id = str(uuid.uuid4())
+    return bento_pb2.Bento(
+        id=bento_id,
+        name=safe_name(audio_path.name),
+        kind="voice-memo",
+        state=bento_pb2.BENTO_STATE_NOTICED,
+        root_path=str(BENTOS_ROOT / bento_id),
+        prompt=prompt,
+        banchans=[
+            bento_pb2.Banchan(
+                guid=str(uuid.uuid4()), name="audio", kind="source", location=str(audio_path)
+            )
+        ],
+    )
+
+
+class VoiceMemoHandlers(fsm.Handlers):
+    # magpie's behavior bound to the bento lifecycle. The stages (transcribe, cleanup)
+    # run INSIDE on_cook and never appear on the wire as states -- the wire sees only
+    # NOTICED -> COOK -> (DONE | PARTIAL -> DONE | FAILED). One instance per bento; it
+    # carries the run's stats and final manifest (the durable outputs live on disk under
+    # root_path, so a future distributed handler reads them from there, not from here).
+
+    def __init__(self) -> None:
+        self.stats: dict = {}
+        self.manifest: dict | None = None
+        self.error: str = ""
+
+    def on_noticed(self, b: bento_pb2.Bento) -> int:
+        # pre-flight: scaffold the bento dir and COPY the source in (dup-over-loss),
+        # repointing the audio banchan at the archived copy. No source -> FAILED.
+        audio = _banchan(b, "audio")
+        src = Path(audio.location) if audio else None
+        if src is None or not src.is_file():
+            self.error = f"no source audio: {src}"
+            self._write_manifest(b)
+            return bento_pb2.BENTO_STATE_FAILED
+        root = Path(b.root_path)
+        raw_dir = root / "raw_data"
+        (root / "outputs").mkdir(parents=True, exist_ok=True)
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        archived = raw_dir / b.name
+        shutil.copy2(src, archived)
+        audio.location = str(archived)
+        return bento_pb2.BENTO_STATE_COOK
+
+    def on_cook(self, b: bento_pb2.Bento) -> int:
+        # the work. transcribe -> raw; cleanup -> clean (or raw, degraded). A transcribe
+        # error FAILs; a degraded cleanup is PARTIAL, a clean one DONE.
+        audio = _banchan(b, "audio")
+        out_dir = Path(b.root_path) / "outputs"
+        try:
+            with _Stage("transcribe", self.stats):
+                raw_text = transcribe(Path(audio.location), prompt=b.prompt)
+        except Exception as e:  # noqa: BLE001 - transcription is the step that cannot degrade
+            self.error = f"transcribe failed: {e}"
+            logger.error("magpie: %s", self.error)
+            self._write_manifest(b)
+            return bento_pb2.BENTO_STATE_FAILED
+        (out_dir / "transcript.raw.txt").write_text(raw_text)
+
+        with _Stage("cleanup", self.stats):
+            cleaned, degraded = _clean_or_degrade(raw_text)
+        clean_path = out_dir / "transcript.txt"
+        clean_path.write_text(cleaned)
+        b.banchans.append(
+            bento_pb2.Banchan(
+                guid=str(uuid.uuid4()), name="transcript", kind="transcript",
+                location=str(clean_path),
+            )
+        )
+        self._write_manifest(b, degraded=degraded)
+        return bento_pb2.BENTO_STATE_PARTIAL if degraded else bento_pb2.BENTO_STATE_DONE
+
+    def on_partial(self, b: bento_pb2.Bento) -> int:
+        # degraded cleanup: the raw transcript is written and IS the deliverable (raw
+        # beats nothing). Convergence/retry is a substrate concern, not magpie's, so we
+        # accept and finish.
+        return bento_pb2.BENTO_STATE_DONE
+
+    def on_done(self, b: bento_pb2.Bento) -> int:
+        # terminal. Outputs + manifest were written in COOK; nothing to do locally.
+        return bento_pb2.BENTO_STATE_UNSPECIFIED
+
+    def on_failed(self, b: bento_pb2.Bento) -> int:
+        # terminal. The manifest (with error) was written where the failure occurred.
+        return bento_pb2.BENTO_STATE_UNSPECIFIED
+
+    def _write_manifest(self, b: bento_pb2.Bento, degraded: bool = False) -> None:
+        # the manifest mirrors the bento: where the outputs ARE, not the prose itself.
+        out_dir = Path(b.root_path) / "outputs"
+        transcript = _banchan(b, "transcript")
+        audio = _banchan(b, "audio")
+        self.manifest = {
+            "bento_id": b.id,
+            "kind": b.kind,
+            "source": audio.location if audio else "",
+            "transcript": transcript.location if transcript else "",
+            "raw_transcript": str(out_dir / "transcript.raw.txt"),
+            "prompt": b.prompt,
+            "degraded": degraded,
+            "error": self.error,
+            "stats": self.stats,
+        }
+        if Path(b.root_path).is_dir():
+            (Path(b.root_path) / "manifest.json").write_text(json.dumps(self.manifest, indent=2))
+
+
+def process(audio_path: Path, prompt: str = "", emitter=None) -> dict:
+    # the full run as a bento walked through the generated FSM. Builds a NOTICED bento
+    # and drives it to a terminal state; each transition is relayed to `emitter` (the
+    # good-citizen sidecar) when one is given -- the CLI passes None (local, no bus).
+    # Returns the manifest (where the outputs are), NOT the transcript text. Raises if
+    # the bento ends FAILED, so callers (cli, daemon) surface the error as before.
     audio_path = Path(audio_path).expanduser().resolve()
     if not audio_path.is_file():
         raise FileNotFoundError(f"no such audio file: {audio_path}")
 
-    # magpie normalizes filenames: declare it, and archive under a safe name.
     safe = safe_name(audio_path.name)
     if safe != audio_path.name:
         logger.warning(
-            "magpie: normalizing filename %r -> %r (no spaces/unsafe chars)",
-            audio_path.name,
-            safe,
+            "magpie: normalizing filename %r -> %r (no spaces/unsafe chars)", audio_path.name, safe
         )
-
-    # an explicit prompt wins; else a sidecar prompt file -- match the safe/slug
-    # name Max actually writes, falling back to the original.
+    # an explicit prompt wins; else a sidecar prompt file next to the audio.
     if not prompt:
         prompt = _sidecar_prompt(audio_path.parent / safe) or _sidecar_prompt(audio_path)
 
-    bento_id = str(uuid.uuid4())
-    bento = BENTOS_ROOT / bento_id
-    raw_dir = bento / "raw_data"
-    out_dir = bento / "outputs"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    bento = _build_bento(audio_path, prompt)
+    handlers = VoiceMemoHandlers()
+    # the bus is the loop in production (one step per consumed event); for a single
+    # local run we step until a terminal handler is reached.
+    while bento.state not in _TERMINAL:
+        prev = bento.state
+        fsm.step(handlers, emitter, bento)
+        if bento.state == prev:  # a handler that did not advance -- stop rather than spin
+            break
 
-    # COPY (never move) the operator's source into the bento, under the safe name.
-    archived = raw_dir / safe
-    shutil.copy2(audio_path, archived)
-
-    stats: dict = {}
-    with _Stage("transcribe", stats):
-        raw_text = transcribe(archived, prompt=prompt)
-    (out_dir / "transcript.raw.txt").write_text(raw_text)
-
-    with _Stage("cleanup", stats):
-        cleaned = cleanup(raw_text)
-    cleaned_path = out_dir / "transcript.txt"
-    cleaned_path.write_text(cleaned)
-
-    manifest = {
-        "bento_id": bento_id,
-        "kind": "voice-memo",
-        "source": str(archived),
-        "transcript": str(cleaned_path),
-        "raw_transcript": str(out_dir / "transcript.raw.txt"),
-        "prompt": prompt,
-        "stats": stats,
-    }
-    (bento / "manifest.json").write_text(json.dumps(manifest, indent=2))
-    return manifest
+    if bento.state == bento_pb2.BENTO_STATE_FAILED:
+        raise RuntimeError(handlers.error or "magpie bento failed")
+    return handlers.manifest
 
 
 def ffmpeg_available() -> bool:
