@@ -40,7 +40,7 @@ def test_safe_name_is_wired_and_normalizes():
 
 def test_cleanup_degrades_when_model_unavailable(monkeypatch):
     # ModelUnavailable (delightd down, or nothing healthy serves the model) -> keep the raw
-    # transcript. This is the fail-closed path of the good-citizen client.
+    # transcript. This is the fail-closed path of the frood client.
     def boom(*a, **k):
         raise pipeline.model.ModelUnavailable("no backend serves 'mistral'")
 

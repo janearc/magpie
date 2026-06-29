@@ -2,7 +2,7 @@
 #
 # bare-metal because mlx_whisper needs Metal -- same carve-out as paling serve. the watch
 # loop and the lifecycle emit are now birblib's: service.serve_inbox wires
-# good_citizen.watcher to a build-bento-and-drive handler that relays each transition to
+# frood.watcher to a build-bento-and-drive handler that relays each transition to
 # the Go sidecar (the bus). this closes the old TODO -- the daemon emits now, it does not
 # only log -- and drops magpie's hand-rolled poll loop. /health stays magpie's own.
 #
@@ -16,7 +16,7 @@ from pathlib import Path
 import uvicorn
 from birblib import service
 from fastapi import FastAPI
-from good_citizen.provider import FilesystemProvider
+from frood.provider import FilesystemProvider
 
 from . import pipeline
 

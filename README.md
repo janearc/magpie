@@ -2,8 +2,8 @@
 
 Voice memos in, clean transcripts out. magpie watches a folder for audio, runs
 it through whisper, cleans up the transcription, and archives both the source and
-the result. It is a good-citizen of the mesh: JSON-by-default, an agent skill, and
-(soon) Kafka notifications via the shared good-citizen sidecar.
+the result. It is a frood of the mesh: JSON-by-default, an agent skill, and
+(soon) Kafka notifications via the shared frood sidecar.
 
 ## Pipeline
 
@@ -14,7 +14,7 @@ audio under `raw_data/` and the transcripts under `outputs/`.
    model lives in the shared read-only Hugging Face cache; it is not vendored here.
 2. **cleanup** — a local model (mistral, via ollama) removes whisper's stutter-loop
    artifacts without rewriting the words. Best-effort: if the model is down, the
-   raw transcript is kept. *(Interim: this routes through the good-citizen model
+   raw transcript is kept. *(Interim: this routes through the frood model
    abstraction once that lands.)*
 3. **archive** — the source audio is **copied** into the bento (never moved or
    deleted) and the transcripts written alongside. Duplicates over loss.
@@ -37,5 +37,5 @@ never committed). magpie only ships code.
 ## Status
 
 First cut: the transcribe → cleanup → archive pipeline + a watch daemon. Still to
-wire: the Go sidecar for Kafka notifications (good-citizen), the agent skill +
+wire: the Go sidecar for Kafka notifications (frood), the agent skill +
 wrapper, kube manifests, and delightd registration.
