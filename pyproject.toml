@@ -1,7 +1,7 @@
 [project]
 name = "magpie"
 version = "0.1.0"
-description = "Audio-to-text ingest service: voice memos in, clean transcripts out. A good-citizen of the mesh."
+description = "Audio-to-text ingest service: voice memos in, clean transcripts out. A frood of the mesh."
 requires-python = ">=3.12"
 dependencies = [
     # transcription: mlx_whisper runs whisper large-v3 on Apple Silicon (Metal).
@@ -10,19 +10,20 @@ dependencies = [
     # the watch-folder daemon + its HTTP surface.
     "fastapi",
     "uvicorn",
-    # the good-citizen Python surface: the model client (cleanup resolves its model
+    # the frood Python surface: the model client (cleanup resolves its model
     # through delightd discovery, fail-closed), the bento contracts + FSM harness, AND
     # birblib -- the birb archetype layer magpie now subclasses (BirbBento/BirbHandlers).
     # birblib ships in this same distribution (the 0.4.x convergence line), so it is one
     # dependency, not two.
-    "blm-good-citizen",
+    "big-little-mesh-frood",
 ]
 
 [tool.uv.sources]
-# blm is public; install the good-citizen + birblib surface from its python/ subdirectory.
-# birblib landed on blm's main in #44; pinned to that merge commit (deterministic on this
-# connectivity-hostile network). Bump or track main deliberately when the surface changes.
-blm-good-citizen = { git = "https://github.com/janearc/blm.git", subdirectory = "python", rev = "3f43bb2558b68853e1c57951f78710b84ec85f81" }
+# big-little-mesh-frood (formerly blm-good-citizen) is public; install the frood + birblib
+# surface from its python/ subdirectory. Pinned to the big-little-mesh #53 merge commit
+# (the rename: good_citizen -> frood, dist -> big-little-mesh-frood). Bump deliberately when
+# the surface changes.
+big-little-mesh-frood = { git = "https://github.com/janearc/big-little-mesh.git", subdirectory = "python", rev = "acb1ed92c4bf346ff0e23b5443511d2a54ce3962" }
 
 [project.scripts]
 magpie = "magpie.cli:main"
