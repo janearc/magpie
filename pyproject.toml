@@ -19,13 +19,11 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-# big-little-mesh-frood (formerly blm-good-citizen) is public; install the frood + birblib surface
-# from its python/ subdirectory.
-#
-# PROVISIONAL (rename in flight): the `frood` package + the `big-little-mesh-frood` dist exists only
-# on a post-rename commit. Repoint `rev` to a big-little-mesh commit once the GitHub repo
-# rename + big-little-mesh #53 have landed; until then this dependency will not resolve.
-big-little-mesh-frood = { git = "https://github.com/janearc/big-little-mesh.git", subdirectory = "python", rev = "REPLACE-WITH-POST-RENAME-COMMIT" }
+# big-little-mesh-frood (formerly blm-good-citizen) is public; install the frood + birblib
+# surface from its python/ subdirectory. Pinned to the big-little-mesh #53 merge commit
+# (the rename: good_citizen -> frood, dist -> big-little-mesh-frood). Bump deliberately when
+# the surface changes.
+big-little-mesh-frood = { git = "https://github.com/janearc/big-little-mesh.git", subdirectory = "python", rev = "acb1ed92c4bf346ff0e23b5443511d2a54ce3962" }
 
 [project.scripts]
 magpie = "magpie.cli:main"
