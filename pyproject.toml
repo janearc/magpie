@@ -15,17 +15,17 @@ dependencies = [
     # birblib -- the birb archetype layer magpie now subclasses (BirbBento/BirbHandlers).
     # birblib ships in this same distribution (the 0.4.x convergence line), so it is one
     # dependency, not two.
-    "big-little-mesh",
+    "big-little-mesh-frood",
 ]
 
 [tool.uv.sources]
-# big-little-mesh (formerly blm-good-citizen) is public; install the frood + birblib surface
+# big-little-mesh-frood (formerly blm-good-citizen) is public; install the frood + birblib surface
 # from its python/ subdirectory.
 #
-# PROVISIONAL (rename in flight): the `frood` package + the `big-little-mesh` dist exist only
+# PROVISIONAL (rename in flight): the `frood` package + the `big-little-mesh-frood` dist exists only
 # on a post-rename commit. Repoint `rev` to a big-little-mesh commit once the GitHub repo
 # rename + big-little-mesh #53 have landed; until then this dependency will not resolve.
-big-little-mesh = { git = "https://github.com/janearc/big-little-mesh.git", subdirectory = "python", rev = "REPLACE-WITH-POST-RENAME-COMMIT" }
+big-little-mesh-frood = { git = "https://github.com/janearc/big-little-mesh.git", subdirectory = "python", rev = "REPLACE-WITH-POST-RENAME-COMMIT" }
 
 [project.scripts]
 magpie = "magpie.cli:main"
