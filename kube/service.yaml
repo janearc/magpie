@@ -1,0 +1,38 @@
+# =============================================================================
+# magpie daemon -- the bare-metal exception (mirrors paling's daemon Service)
+# =============================================================================
+# `magpie serve` runs on the HOST, not in a pod: it needs Apple Silicon's Metal GPU for
+# mlx_whisper, which a Linux container cannot reach. We still want in-cluster clients to
+# address it by a stable name (for the /health poll, and the bus relay once the sidecar
+# lands).
+#
+# We model it as an ExternalName Service that CNAMEs the stable cluster name to
+# `host.k3d.internal` -- the name k3d injects into CoreDNS for the host gateway -- which
+# CoreDNS resolves to the host at RUNTIME. So NO host IP is baked into this manifest: if
+# colima/lima's gateway address changes, this keeps working because it follows the name,
+# not a frozen IP. (An Endpoints `address` requires an IP and cannot hold a DNS name --
+# that brittleness is exactly what ExternalName avoids.)
+#
+#   in-cluster client -> magpie.fleet.svc.cluster.local  (CNAME)
+#                     -> host.k3d.internal  (CoreDNS -> the host)  -> :8092
+#
+# The daemon must listen on :8092 on the host (`magpie serve`). If a k3d build does not
+# inject host.k3d.internal, point externalName at another resolvable host name (or the
+# host's LAN name).
+# -----------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: magpie
+  namespace: fleet
+  labels:
+    app.kubernetes.io/name: magpie
+    app.kubernetes.io/part-of: fleet
+    app.kubernetes.io/component: daemon
+spec:
+  type: ExternalName
+  externalName: host.k3d.internal
+  ports:
+    - name: http
+      port: 8092
+      protocol: TCP

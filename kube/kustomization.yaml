@@ -1,0 +1,26 @@
+# kustomize entry point for magpie in namespace `fleet`.
+#
+# magpie is the bare-metal exception (like paling's daemon): `magpie serve` runs on the
+# HOST, not in a pod -- mlx_whisper needs Apple Silicon's Metal GPU, which a Linux
+# container cannot reach. So the only resource here is an ExternalName Service that
+# CNAMEs magpie's stable cluster name to the host gateway (service.yaml). There is NO
+# Deployment to schedule: nothing about magpie is containerizable yet (the Go sidecar
+# that paling has is still "soon" for magpie -- see README).
+#
+# The `fleet` namespace itself is created by the traefik bring-up, not here -- magpie
+# lands INTO the existing namespace.
+#
+# Validate offline (no cluster, no apply):
+#   kubectl kustomize kube/ | kubeconform -strict
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fleet
+
+resources:
+  - service.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: fleet
+    includeSelectors: false
