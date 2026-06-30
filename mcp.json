@@ -18,8 +18,9 @@
         "required": ["file"]
       },
       "handler": {
-        "type": "exec",
-        "command": ["skill/magpie", "transcribe", "{file}", "{prompt}"]
+        "type": "command",
+        "command": "skill/magpie",
+        "args": ["transcribe", "{file}", "{prompt}"]
       }
     },
     {
