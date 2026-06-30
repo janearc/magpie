@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# magpie: thin wrapper over the magpie CLI + daemon. this is the surface delightd
+# exposes as the agent skill -- an agent (or a human) drives magpie through it instead
+# of mucking in the shell. magpie is a WATCHER, not an API daemon: `transcribe` is a
+# one-shot op on the bare-metal (Metal) host, and the daemon serves only GET /health.
+#
+# the mcp.json `transcribe` handler invokes this wrapper with `{file}` and `{prompt}`
+# templated in. an OMITTED prompt arrives either empty or as the literal placeholder
+# "{prompt}" (the harness templates {name} and leaves it unsubstituted when the arg is
+# absent). EITHER way we MUST run the no-prompt path -- never feed whisper a junk
+# `--prompt ""` or `--prompt "{prompt}"`, which would bias decoding toward garbage. that
+# guard is the whole reason transcription routes through here and not a raw exec.
+set -euo pipefail
+
+# resolve magpie's CLI. MAGPIE_BIN wins (tests point it at a shim); else the installed
+# `magpie` console script; else run it out of this repo via uv regardless of cwd, so a
+# fresh clone works without a global install.
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+run_magpie() {
+  if [ -n "${MAGPIE_BIN:-}" ]; then
+    "$MAGPIE_BIN" "$@"
+  elif command -v magpie >/dev/null 2>&1; then
+    magpie "$@"
+  else
+    uv run --directory "$repo_root" magpie "$@"
+  fi
+}
+
+usage() {
+  cat >&2 <<'EOF'
+usage:
+  magpie transcribe <file> [prompt]   transcribe one audio file (ACK + where it landed)
+  magpie health                       report the daemon's liveness (GET /health)
+  magpie serve [inbox]                run the watch-folder daemon (defaults ~/var/magpie/inbox)
+EOF
+  exit 2
+}
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  transcribe)
+    [ $# -ge 1 ] || usage
+    file="$1"; shift || true
+    prompt="${1:-}"
+    # THE {prompt} GUARD: an empty prompt OR the unsubstituted literal "{prompt}" means
+    # "no prompt was given" -- run the no-prompt path so whisper never sees a junk value.
+    if [ -z "$prompt" ] || [ "$prompt" = "{prompt}" ]; then
+      run_magpie transcribe "$file"
+    else
+      run_magpie transcribe "$file" --prompt "$prompt"
+    fi
+    ;;
+  health)
+    # the daemon's only HTTP surface; override the base with MAGPIE_API.
+    curl -fsS "${MAGPIE_API:-http://localhost:8092}/health"
+    echo
+    ;;
+  serve)
+    # optional inbox override as a positional, else the daemon's default.
+    if [ $# -ge 1 ]; then
+      run_magpie serve --inbox "$1"
+    else
+      run_magpie serve
+    fi
+    ;;
+  *) usage ;;
+esac

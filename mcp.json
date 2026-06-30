@@ -1,0 +1,40 @@
+{
+  "tools": [
+    {
+      "name": "transcribe",
+      "description": "Transcribe one audio file to a clean transcript. A one-shot op on the bare-metal (Metal) host: whisper large-v3 in, an ACK manifest out (where the transcript landed, not the text). An optional prompt biases whisper toward the right names/places/terms; omit it for the no-prompt path.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "path to an audio file (m4a, wav, mp3, aac, flac)"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "OPTIONAL per-bento context (names, places, terms) to bias whisper; omit for the no-prompt path"
+          }
+        },
+        "required": ["file"]
+      },
+      "handler": {
+        "type": "command",
+        "command": "skill/magpie",
+        "args": ["transcribe", "{file}", "{prompt}"]
+      }
+    },
+    {
+      "name": "health",
+      "description": "Report the magpie daemon's liveness. The watch-folder daemon serves only GET /health on :8092 (transcription is the one-shot CLI op above, not an HTTP call).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "handler": {
+        "type": "http",
+        "method": "GET",
+        "url": "http://host.docker.internal:8092/health"
+      }
+    }
+  ]
+}
