@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 
 from birblib import BirbBento, BirbHandlers, CookResult, Manifest, Stage, driver, safe_name
-from good_citizen import model
+from frood import model
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 # we do not vendor weights. ffmpeg (a hard dep of mlx_whisper) decodes the m4a.
 WHISPER_MODEL = "mlx-community/whisper-large-v3-mlx"
 
-# the cleanup model -- a logical name the good-citizen model client resolves through
+# the cleanup model -- a logical name the frood model client resolves through
 # service discovery (fail-closed). The prompt's whole job is to delete whisper's loop
 # artifacts (the "okay" x337 / "Let's go." x40 pathology) WITHOUT rewriting the words.
 CLEANUP_MODEL = "mistral"
@@ -37,7 +37,7 @@ _CLEANUP_PROMPT = (
 )
 
 # data root: code is public, data is private. Everything magpie writes lives under
-# ${HOME}/var/magpie, which is gitignored -- the separation good-citizen enshrines.
+# ${HOME}/var/magpie, which is gitignored -- the separation frood enshrines.
 DATA_ROOT = Path.home() / "var" / "magpie"
 BENTOS_ROOT = DATA_ROOT / "bentos"
 
@@ -77,7 +77,7 @@ def _clean_or_degrade(raw_text: str) -> tuple[str, bool]:
 
 
 def cleanup(raw_text: str) -> str:
-    # best-effort artifact cleanup through the good-citizen model client (resolves the model
+    # best-effort artifact cleanup through the frood model client (resolves the model
     # via service discovery, fail-closed). Degrades to the raw transcript rather than
     # failing the run -- a raw transcript beats no transcript.
     return _clean_or_degrade(raw_text)[0]
@@ -174,7 +174,7 @@ class AudioHandlers(BirbHandlers):
 def process(audio_path: Path, prompt: str = "", emitter=None) -> Manifest:
     # the full run as a bento walked through the generated FSM (via birblib.driver). Builds
     # a NOTICED bento and drives it to a terminal state; each transition is relayed to
-    # `emitter` (the good-citizen sidecar) when one is given -- the CLI passes None (local,
+    # `emitter` (the frood sidecar) when one is given -- the CLI passes None (local,
     # no bus). Returns the manifest (where the outputs are), NOT the transcript text. Raises
     # if the bento ends FAILED, so callers (cli, daemon) surface the error.
     audio_path = Path(audio_path).expanduser().resolve()

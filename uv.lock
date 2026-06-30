@@ -34,9 +34,9 @@ wheels = [
 ]
 
 [[package]]
-name = "blm-good-citizen"
+name = "big-little-mesh-frood"
 version = "0.4.1"
-source = { git = "https://github.com/janearc/blm.git?subdirectory=python&rev=3f43bb2558b68853e1c57951f78710b84ec85f81#3f43bb2558b68853e1c57951f78710b84ec85f81" }
+source = { git = "https://github.com/janearc/big-little-mesh.git?subdirectory=python&rev=07d7420bba66ff3111ba1b0f962250032e5eed41#07d7420bba66ff3111ba1b0f962250032e5eed41" }
 dependencies = [
     { name = "protobuf" },
     { name = "transitions" },
@@ -394,7 +394,7 @@ name = "magpie"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "blm-good-citizen" },
+    { name = "big-little-mesh-frood" },
     { name = "fastapi" },
     { name = "mlx-whisper" },
     { name = "uvicorn" },
@@ -408,7 +408,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "blm-good-citizen", git = "https://github.com/janearc/blm.git?subdirectory=python&rev=3f43bb2558b68853e1c57951f78710b84ec85f81" },
+    { name = "big-little-mesh-frood", git = "https://github.com/janearc/big-little-mesh.git?subdirectory=python&rev=07d7420bba66ff3111ba1b0f962250032e5eed41" },
     { name = "fastapi" },
     { name = "mlx-whisper" },
     { name = "uvicorn" },
