@@ -18,7 +18,7 @@ from birblib import service
 from fastapi import FastAPI
 from frood.provider import FilesystemProvider
 
-from . import pipeline
+from . import pipeline, register
 
 log = logging.getLogger(__name__)
 
@@ -63,4 +63,7 @@ def serve(host: str = "127.0.0.1", port: int = 8092, inbox: Path | None = None,
         daemon=True,
     ).start()
     log.info("magpie serving on %s:%s", host, port)
+    # join the mesh: register with delightd once /health is up, on a background thread so it never
+    # blocks the server. Additive -- a failed join is loud but does not stop magpie transcribing.
+    register.start_registration(host, port)
     uvicorn.run(app, host=host, port=port)

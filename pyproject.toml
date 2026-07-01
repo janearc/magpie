@@ -23,7 +23,7 @@ dependencies = [
 # surface from its python/ subdirectory. Pinned to the big-little-mesh #53 merge commit
 # (the rename: good_citizen -> frood, dist -> big-little-mesh-frood). Bump deliberately when
 # the surface changes.
-big-little-mesh-frood = { git = "https://github.com/janearc/big-little-mesh.git", subdirectory = "python", rev = "acb1ed92c4bf346ff0e23b5443511d2a54ce3962" }
+big-little-mesh-frood = { git = "https://github.com/janearc/big-little-mesh.git", subdirectory = "python", rev = "34117df5c8beb6a91f68741bad7844c6d0cf3bee" }
 
 [project.scripts]
 magpie = "magpie.cli:main"
