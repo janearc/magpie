@@ -25,7 +25,7 @@ def test_build_registration_declares_identity_and_both_emits():
     assert endpoints[0].address == "magpie.fleet:8092"
 
 
-def test_register_with_delightd_returns_response_on_success(monkeypatch):
+def test_register_until_joined_returns_response_on_success(monkeypatch):
     captured = {}
 
     def fake_send(identity, contracts, endpoints, delightd_url=None):
@@ -34,7 +34,7 @@ def test_register_with_delightd_returns_response_on_success(monkeypatch):
         return register_pb2.RegisterResponse(lease_ttl_seconds=30)
 
     monkeypatch.setattr(register, "send_registration", fake_send)
-    resp = register.register_with_delightd(
+    resp = register.register_until_joined(
         endpoint_address="magpie.fleet:8092", delightd_url="http://delightd:8088"
     )
     assert resp is not None
@@ -43,15 +43,42 @@ def test_register_with_delightd_returns_response_on_success(monkeypatch):
     assert captured["url"] == "http://delightd:8088"
 
 
-def test_register_with_delightd_fails_loud_but_non_fatal(monkeypatch):
-    # a declined join must NOT raise out of magpie's startup -- it returns None (logged loudly),
-    # and magpie keeps serving because registration is additive today.
+def test_register_until_joined_stops_on_decline(monkeypatch):
+    # a 4xx DECLINE (unknown project) is terminal: return None (logged loudly), do NOT raise and do
+    # NOT retry -- retrying can't change a "you are not allowed", and magpie keeps serving.
+    calls = {"n": 0}
+
     def fake_send(identity, contracts, endpoints, delightd_url=None):
+        calls["n"] += 1
         raise register.RegistrationError(404, "project not found")
 
     monkeypatch.setattr(register, "send_registration", fake_send)
-    resp = register.register_with_delightd(endpoint_address="magpie.fleet:8092")
+    resp = register.register_until_joined(endpoint_address="magpie.fleet:8092")
     assert resp is None
+    assert calls["n"] == 1  # terminal: tried exactly once, did not retry a decline
+
+
+def test_register_until_joined_retries_while_unreachable_then_succeeds(monkeypatch):
+    # status 0 (delightd unreachable) is transient: keep retrying until delightd answers. Two
+    # unreachable failures then a success -> the join completes without a restart. _sleep is stubbed
+    # so the retry does not actually wait.
+    attempts = {"n": 0}
+    slept = []
+
+    def fake_send(identity, contracts, endpoints, delightd_url=None):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise register.RegistrationError(0, "delightd unreachable: connection refused")
+        return register_pb2.RegisterResponse(lease_ttl_seconds=15)
+
+    monkeypatch.setattr(register, "send_registration", fake_send)
+    resp = register.register_until_joined(
+        endpoint_address="magpie.fleet:8092", _sleep=slept.append
+    )
+    assert resp is not None
+    assert resp.lease_ttl_seconds == 15
+    assert attempts["n"] == 3  # retried twice, joined on the third
+    assert slept == [2.0, 4.0]  # backoff doubled between the two retries
 
 
 def test_endpoint_address_defaults_from_env(monkeypatch):
@@ -64,8 +91,8 @@ def test_endpoint_address_defaults_from_env(monkeypatch):
         return register_pb2.RegisterResponse()
 
     monkeypatch.setattr(register, "send_registration", fake_send)
-    register.register_with_delightd()
+    register.register_once()
     assert captured["address"] == "magpie:8092"
     monkeypatch.setenv("MAGPIE_ENDPOINT_ADDRESS", "magpie.fleet:9999")
-    register.register_with_delightd()
+    register.register_once()
     assert captured["address"] == "magpie.fleet:9999"

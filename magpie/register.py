@@ -61,38 +61,66 @@ def build_registration(endpoint_address: str):
     return identity, contracts, endpoints
 
 
-def register_with_delightd(endpoint_address: str | None = None, delightd_url: str | None = None):
-    # Build and send magpie's registration. Returns the RegisterResponse on success, or None if
-    # the join did not complete (logged loudly) -- magpie keeps serving regardless, because
-    # registration is additive today.
+# retry backoff for the register loop: start at 2s, double, cap at 60s. delightd may simply not
+# be up yet when magpie starts, so magpie keeps knocking until it can reach it.
+_RETRY_BACKOFF_START = 2.0
+_RETRY_BACKOFF_MAX = 60.0
+
+
+def register_once(endpoint_address: str | None = None, delightd_url: str | None = None):
+    # Build and send magpie's registration ONCE. Returns the RegisterResponse on success; raises
+    # frood RegistrationError on a decline or an unreachable delightd. The caller decides retry vs
+    # give-up from RegistrationError.status (0 == delightd unreachable/timed out; otherwise
+    # delightd's HTTP status code).
     endpoint_address = endpoint_address or os.environ.get("MAGPIE_ENDPOINT_ADDRESS", "magpie:8092")
     identity, contracts, endpoints = build_registration(endpoint_address)
-    try:
-        resp = send_registration(identity, contracts, endpoints, delightd_url=delightd_url)
-    except RegistrationError as e:
-        # LOUD, but non-fatal: name why the join failed (delightd reports the reason) so an
-        # operator sees "magpie is not on the registry, and here is why" rather than silence.
-        log.warning(
-            "magpie: registration with delightd did NOT complete "
-            "(still serving; join is additive): %s",
-            e,
+    return send_registration(identity, contracts, endpoints, delightd_url=delightd_url)
+
+
+def register_until_joined(delightd_url: str | None = None, endpoint_address: str | None = None,
+                          _sleep=time.sleep):
+    # Register, RETRYING while delightd is UNREACHABLE, so a delightd that comes up AFTER magpie
+    # does not leave magpie unregistered until a restart. The status axis splits the two failure
+    # kinds:
+    #   - status 0 (delightd unreachable / timed out): transient -- delightd may not be up yet.
+    #     Keep knocking with capped backoff, loud each time, until it answers.
+    #   - any HTTP status (a DECLINE: unknown project, unverified contract, endpoint held, or the
+    #     /health guarantee failing): TERMINAL. Retrying cannot change a "you are not allowed" or a
+    #     misconfigured endpoint, so log it loud and stop -- re-knocking would just spam delightd.
+    # Either way magpie keeps serving (registration is additive); it never silently looks joined.
+    # _sleep is injectable so the retry is testable without real delay.
+    backoff = _RETRY_BACKOFF_START
+    while True:
+        try:
+            resp = register_once(endpoint_address=endpoint_address, delightd_url=delightd_url)
+        except RegistrationError as e:
+            if e.status == 0:
+                log.warning(
+                    "magpie: delightd unreachable; retrying registration in %.0fs: %s", backoff, e
+                )
+                _sleep(backoff)
+                backoff = min(backoff * 2, _RETRY_BACKOFF_MAX)
+                continue
+            log.warning(
+                "magpie: delightd DECLINED registration (terminal; still serving): %s", e
+            )
+            return None
+        log.info(
+            "magpie: registered with delightd as %r (lease_ttl=%ss)",
+            SERVICE_NAME,
+            resp.lease_ttl_seconds,
         )
-        return None
-    log.info(
-        "magpie: registered with delightd as %r (endpoint %s, lease_ttl=%ss)",
-        SERVICE_NAME,
-        endpoint_address,
-        resp.lease_ttl_seconds,
-    )
-    return resp
+        return resp
 
 
 def register_when_healthy(host: str, port: int, delightd_url: str | None = None) -> None:
     # Wait until magpie's OWN /health is accepting connections, THEN register -- delightd probes
-    # /health during the register call, so registering before the server is up would fail the
-    # reachability guarantee on a race. The wait is bounded (~30s): if the server never comes up,
-    # give up rather than spin, and let register run once (it will fail loud, which is correct --
-    # a server that never became healthy should not be on the registry).
+    # /health during the register call, so registering before the server accepts would fail the
+    # reachability guarantee on a race. (This is a readiness check for OUR process; whether delightd
+    # can reach the DECLARED fleet address is delightd's probe to make, and shows up as a decline if
+    # not.) The wait is bounded (~30s); if the server never comes up, stop waiting and let the join
+    # attempt run -- it will fail loud, which is correct: a server that never became healthy should
+    # not be on the registry.
     health_url = f"http://{host}:{port}/health"
     for _ in range(30):
         try:
@@ -102,7 +130,7 @@ def register_when_healthy(host: str, port: int, delightd_url: str | None = None)
         except Exception:  # noqa: BLE001 - the server may simply not be accepting yet; keep waiting
             pass
         time.sleep(1)
-    register_with_delightd(delightd_url=delightd_url)
+    register_until_joined(delightd_url=delightd_url)
 
 
 def start_registration(host: str, port: int, delightd_url: str | None = None) -> threading.Thread:
