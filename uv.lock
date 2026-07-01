@@ -36,7 +36,7 @@ wheels = [
 [[package]]
 name = "big-little-mesh-frood"
 version = "0.4.1"
-source = { git = "https://github.com/janearc/big-little-mesh.git?subdirectory=python&rev=acb1ed92c4bf346ff0e23b5443511d2a54ce3962#acb1ed92c4bf346ff0e23b5443511d2a54ce3962" }
+source = { git = "https://github.com/janearc/big-little-mesh.git?subdirectory=python&rev=34117df5c8beb6a91f68741bad7844c6d0cf3bee#34117df5c8beb6a91f68741bad7844c6d0cf3bee" }
 dependencies = [
     { name = "protobuf" },
     { name = "transitions" },
@@ -408,7 +408,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "big-little-mesh-frood", git = "https://github.com/janearc/big-little-mesh.git?subdirectory=python&rev=acb1ed92c4bf346ff0e23b5443511d2a54ce3962" },
+    { name = "big-little-mesh-frood", git = "https://github.com/janearc/big-little-mesh.git?subdirectory=python&rev=34117df5c8beb6a91f68741bad7844c6d0cf3bee" },
     { name = "fastapi" },
     { name = "mlx-whisper" },
     { name = "uvicorn" },
