@@ -12,10 +12,10 @@ audio under `raw_data/` and the transcripts under `outputs/`.
 
 1. **transcribe** — whisper large-v3 (MLX, Apple Silicon) via `mlx_whisper`. The
    model lives in the shared read-only Hugging Face cache; it is not vendored here.
-2. **cleanup** — a local model (mistral, via ollama) removes whisper's stutter-loop
-   artifacts without rewriting the words. Best-effort: if the model is down, the
-   raw transcript is kept. *(Interim: this routes through the frood model
-   abstraction once that lands.)*
+2. **cleanup** — a local model removes whisper's stutter-loop artifacts without
+   rewriting the words. The model is named logically (`mistral`) and resolved
+   through the frood model client. Best-effort: if the model is down, the raw
+   transcript is kept.
 3. **archive** — the source audio is **copied** into the bento (never moved or
    deleted) and the transcripts written alongside. Duplicates over loss.
 
@@ -36,6 +36,8 @@ never committed). magpie only ships code.
 
 ## Status
 
-First cut: the transcribe → cleanup → archive pipeline + a watch daemon. Still to
-wire: the Go sidecar for Kafka notifications (frood), the agent skill +
-wrapper, kube manifests, and delightd registration.
+Working today: the transcribe → cleanup → archive pipeline, the watch daemon,
+delightd registration (register-on-start, health-gated, with retry while delightd
+is unreachable), the agent skill + wrapper, and the kube manifests. Still to wire:
+the Go sidecar for Kafka notifications (frood) — magpie declares its emit
+contracts but does not yet put events on the bus.
