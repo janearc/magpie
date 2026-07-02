@@ -36,6 +36,8 @@ never committed). magpie only ships code.
 
 ## Status
 
-First cut: the transcribe → cleanup → archive pipeline + a watch daemon. Still to
-wire: the Go sidecar for Kafka notifications (frood), the agent skill +
-wrapper, kube manifests, and delightd registration.
+Working today: the transcribe → cleanup → archive pipeline, the watch daemon,
+delightd registration (register-on-start, health-gated, with retry while delightd
+is unreachable), the agent skill + wrapper, and the kube manifests. Still to wire:
+the Go sidecar for Kafka notifications (frood) — magpie declares its emit
+contracts but does not yet put events on the bus.
