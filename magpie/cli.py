@@ -30,6 +30,21 @@ def _serve(args) -> None:
     daemon.serve(host=args.host, port=args.port, inbox=Path(args.inbox).expanduser())
 
 
+def _launchagent(args) -> None:
+    # install/uninstall/status for the per-user launchd job that keeps `magpie
+    # serve` self-healing and always-up on bare-metal apple silicon (mirrors
+    # paling's launchagent verb set exactly -- no invented verbs). json by
+    # default, same as every other magpie command.
+    from . import launchagent
+    if args.la_action == "install":
+        result = launchagent.install(host=args.host, port=args.port, load=not args.no_load)
+    elif args.la_action == "uninstall":
+        result = launchagent.uninstall()
+    else:
+        result = launchagent.status()
+    print(json.dumps(result.model_dump(), indent=2))
+
+
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(prog="magpie", description="voice memos in, clean transcripts out")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -46,6 +61,18 @@ def main(argv=None) -> None:
     s.add_argument("--inbox", default=str(pipeline.DATA_ROOT / "inbox"),
                    help="directory to watch for new audio")
     s.set_defaults(func=_serve)
+
+    la = sub.add_parser(
+        "launchagent",
+        help="install/uninstall the self-healing launchd agent for `magpie serve`",
+    )
+    la.add_argument("la_action", choices=["install", "uninstall", "status"],
+                     help="install, uninstall, or report status of the launchd agent")
+    la.add_argument("--host", default="127.0.0.1", help="host the supervised daemon should bind")
+    la.add_argument("--port", type=int, default=8092, help="port the supervised daemon should bind")
+    la.add_argument("--no-load", action="store_true",
+                     help="write/remove the plist but do not (un)load it into launchd")
+    la.set_defaults(func=_launchagent)
 
     args = p.parse_args(argv)
     args.func(args)
